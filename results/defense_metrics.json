@@ -1,0 +1,23 @@
+[
+  {
+    "accuracy": 1.0,
+    "f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "method": "vanilla"
+  },
+  {
+    "accuracy": 0.6745,
+    "f1": 0.5174203113417346,
+    "precision": 1.0,
+    "recall": 0.349,
+    "method": "spotlight"
+  },
+  {
+    "accuracy": 0.5,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "method": "jatmo"
+  }
+]

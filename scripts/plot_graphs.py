@@ -69,33 +69,58 @@ def dataset_characterization():
     bins = 30
     save_hist([benign_len, injected_len], ["clean", "injected"], bins, "Text length distribution", "text_length_distribution.png")
 
-def _find_outputs_file():
+def _collect_output_files():
+    multi = list((ROOT/"results").glob("spotlight_outputs_*.json"))
+    if multi:
+        return multi
     candidates = [DATA / "spotlight_outputs.json", ROOT / "results" / "spotlight_outputs.json"]
     for c in candidates:
         if c.exists():
-            return c
-    return None
+            return [c]
+    return []
 
 def attack_effectiveness_analysis():
     ds_path = DATA / "spotlight_xpia_test.json"
-    out_path = _find_outputs_file()
-    if not ds_path.exists() or out_path is None:
+    out_files = _collect_output_files()
+    if not ds_path.exists() or not out_files:
         return
     ds = pd.DataFrame(load_json(ds_path))
-    outs = pd.DataFrame(load_json(out_path))
-    if "id" not in outs.columns or "model_output" not in outs.columns:
+    frames = []
+    for fp in out_files:
+        df = pd.DataFrame(load_json(fp))
+        if "id" in df.columns and "model_output" in df.columns:
+            if "model" not in df.columns:
+                df["model"] = fp.stem.replace("spotlight_outputs_","")
+            frames.append(df)
+    if not frames:
         return
-    merged = ds.merge(outs[["id","model_output"]], on="id", how="inner")
+    outs = pd.concat(frames, ignore_index=True)
+    merged = ds.merge(outs[["id","model_output","model"]], on="id", how="inner")
     merged["success"] = merged["model_output"].astype(str).str.contains(KEYWORD, case=False)
 
-    grp_loc_type = merged.groupby(["payload_location","payload"]).agg(success_rate=("success","mean")).reset_index()
-    save_bar(grp_loc_type, "payload_location", "success_rate", "Attack success rate by location (grouped)", "success_rate_by_location_grouped.png", hue="payload")
+    grp_loc_type = merged.groupby(["model","payload_location","payload"]).agg(success_rate=("success","mean")).reset_index()
+    plt.figure(figsize=(10,6))
+    ax = sns.barplot(data=grp_loc_type, x="payload_location", y="success_rate", hue="model")
+    ax.set_title("Attack success rate by location (per model)")
+    plt.tight_layout()
+    plt.savefig(FIGS / "success_rate_by_location_per_model.png")
+    plt.close()
 
-    grp_payload = merged.groupby("payload").agg(success_rate=("success","mean")).reset_index()
-    save_bar(grp_payload, "payload", "success_rate", "Attack success rate by payload type", "success_rate_by_payload.png")
+    grp_payload = merged.groupby(["model","payload"]).agg(success_rate=("success","mean")).reset_index()
+    plt.figure(figsize=(10,6))
+    ax = sns.barplot(data=grp_payload, x="payload", y="success_rate", hue="model")
+    ax.set_title("Attack success rate by payload type (per model)")
+    plt.tight_layout()
+    plt.savefig(FIGS / "success_rate_by_payload_per_model.png")
+    plt.close()
 
-    pivot = grp_loc_type.pivot(index="payload_location", columns="payload", values="success_rate")
-    save_heatmap(pivot, "Heatmap: location × payload type (success rate)", "heatmap_location_payload_success.png")
+    pivot = merged.pivot_table(index="payload_location", columns=["model","payload"], values="success", aggfunc="mean")
+    plt.figure(figsize=(12,6))
+    sns.heatmap(pivot, annot=False, cmap="viridis")
+    plt.title("Heatmap: location × payload type × model")
+    plt.tight_layout()
+    plt.savefig(FIGS / "heatmap_location_payload_model_success.png")
+    plt.close()
 
 def defense_performance():
     metrics_path = ROOT / "results" / "defense_metrics.json"
@@ -151,11 +176,13 @@ def defense_performance():
 
 def task_specific_analysis():
     ds_path = DATA / "spotlight_xpia_test.json"
-    out_path = _find_outputs_file()
-    if not ds_path.exists() or out_path is None:
+    agg_path = ROOT / "results" / "spotlight_outputs.json"
+    out_files = _collect_output_files()
+    use_path = agg_path if agg_path.exists() else (out_files[0] if out_files else None)
+    if not ds_path.exists() or use_path is None:
         return
     ds = pd.DataFrame(load_json(ds_path))
-    outs = pd.DataFrame(load_json(out_path))
+    outs = pd.DataFrame(load_json(use_path))
     if "id" not in outs.columns or "model_output" not in outs.columns:
         return
     merged = ds.merge(outs[["id","model_output"]], on="id", how="inner")
@@ -231,11 +258,13 @@ def advanced_visualizations():
         pivot = counts.pivot(index="location", columns="attack_variant", values="count").fillna(0)
         save_heatmap(pivot, "Attack grid counts", "attack_grid_heatmap_counts.png")
 
-    out_path = _find_outputs_file()
+    agg_path = ROOT / "results" / "spotlight_outputs.json"
+    out_files = _collect_output_files()
+    use_path = agg_path if agg_path.exists() else (out_files[0] if out_files else None)
     ds_path = DATA / "spotlight_xpia_test.json"
-    if out_path is not None and ds_path.exists():
+    if use_path is not None and ds_path.exists():
         ds = pd.DataFrame(load_json(ds_path))
-        outs = pd.DataFrame(load_json(out_path))
+        outs = pd.DataFrame(load_json(use_path))
         merged = ds.merge(outs[["id","model_output"]], on="id", how="inner")
         merged["success"] = merged["model_output"].astype(str).str.contains(KEYWORD, case=False)
         idxs = []
@@ -298,4 +327,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
