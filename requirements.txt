@@ -1,3 +1,7 @@
 openai
 numpy
 tqdm
+matplotlib
+seaborn
+pandas
+scikit-learn
